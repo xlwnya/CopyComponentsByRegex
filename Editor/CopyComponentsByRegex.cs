@@ -102,37 +102,18 @@ namespace CopyComponentsByRegex {
 				return;
 			}
 
+			var targetComponents = go.GetComponents<Component> ();
+			Dictionary<System.Type, int> currentComponentCount = new Dictionary<System.Type, int> ();
+			
 			// copy components
 			foreach (Component component in tree.components) {
 				UnityEditorInternal.ComponentUtility.CopyComponent (component);
-				// 同じ種類のコンポーネントがある場合、既存のコンポーネントに上書きすることも出来る。
-				// しかし、一つのオブジェクトに複数のコンポーネントを設定したい場合もあるのでとりあえずコメントアウトしておく。
-				// 要望などがあれば切り替えても良いかもしれない。
-				/*
-				var targetComponent = go.GetComponent(type);
-				if (targetComponent) {
-					UnityEditorInternal.ComponentUtility.PasteComponentValues(targetComponent);
-				} else {
-					UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
-				}
-				*/
-				var targetComponent = go.GetComponent(component.GetType());
+
 				if (component is Cloth) {
 					var cloth = go.GetComponent<Cloth> () == null ? go.AddComponent<Cloth> () : go.GetComponent<Cloth> ();
 					CopyProperties (component, cloth);
-				} else if (component is Transform) {
-					if (copyTransform) {
-						UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
-					}
-				} else {
-					UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
-				}
 
-				Component[] comps = go.GetComponents<Component> ();
-				var dstComponent = comps[comps.Length - 1];
-				components.Add (dstComponent);
-
-				if (component is Cloth) {
+					Component dstComponent = cloth;
 					var srcCloth = (component as Cloth);
 					var dstCloth = (dstComponent as Cloth);
 					var srcCoefficients = srcCloth.coefficients;
@@ -164,7 +145,39 @@ namespace CopyComponentsByRegex {
 							dstCloth.coefficients = dstCoefficients;
 						}
 					}
+				} else if (component is Transform) {
+					Component dstComponent = go.GetComponent<Transform>();
+					if (copyTransform) {
+						UnityEditorInternal.ComponentUtility.PasteComponentValues (dstComponent);
+					}
+				} else {
+					// https://gist.github.com/tsubaki/d049957ad312e3a12764
+					// 同じコンポーネントが複数ある場合、上から並んでいる順番にコピーする(一部削除されている場合はズレる)
+					var componentCount = targetComponents.Count (c => c.GetType () == component.GetType ());
+					if (componentCount == 0) {
+						UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
+					} else if (componentCount == 1) {
+						var targetComponent = targetComponents.First (c => c.GetType () == component.GetType ());
+						UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
+					} else {
+						if (currentComponentCount.ContainsKey (component.GetType ()) == false) {
+							currentComponentCount.Add (component.GetType (), 0);
+						}
+						var count = currentComponentCount [component.GetType ()];
+						var targetComponentsWithType = targetComponents.Where (c => c.GetType () == component.GetType ());
+						if (count < targetComponentsWithType.Count ()) {
+							var targetComponent = targetComponents.Where (c => c.GetType () == component.GetType ()).ElementAt (count);
+							currentComponentCount [component.GetType ()] += 1;
+							UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
+						} else {
+							UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
+						}
+					}
 				}
+				}
+			
+			foreach (Component c in go.GetComponents<Component>()) {
+				components.Add(c);
 			}
 
 			// children
@@ -198,7 +211,9 @@ namespace CopyComponentsByRegex {
 					childObject.name = treeChild.name;
 
 					// コピーしたオブジェクトに対しては自動的に同種コンポーネントの削除を行う
+					if (isRemoveBeforeCopy) {
 					RemoveWalkdown(childObject, ref next);
+					}
 				} else {
 					child = childDic[treeChild.name];
 				}
@@ -218,7 +233,7 @@ namespace CopyComponentsByRegex {
 
 			// remove components
 			foreach (Component component in go.GetComponents<Component> ()) {
-				if (component != null && componentsTypes.Contains (component.GetType ())) {
+				if (component != null && !(component is Transform) && componentsTypes.Contains (component.GetType ())) {
 					Object.DestroyImmediate (component);
 				}
 			}

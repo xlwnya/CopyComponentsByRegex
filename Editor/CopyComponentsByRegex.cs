@@ -1,4 +1,4 @@
-﻿namespace CopyComponentsByRegex {
+namespace CopyComponentsByRegex {
 	using System.Collections.Generic;
 	using System.Collections;
 	using System.Linq;
@@ -31,6 +31,7 @@
 		static List<Component> components = null;
 		static bool isRemoveBeforeCopy = false;
 		static bool isObjectCopy = false;
+		static bool isObjectCopySaveTransform = false;
 		static bool isClothNNS = false;
 		static bool copyTransform = false;
 
@@ -38,6 +39,7 @@
 			pattern = EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pattern") ?? "";
 			isRemoveBeforeCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isRemoveBeforeCopy") ?? isRemoveBeforeCopy.ToString ());
 			isObjectCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopy") ?? isObjectCopy.ToString ());
+			isObjectCopySaveTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopySaveTransform") ?? isObjectCopySaveTransform.ToString ());
 			isClothNNS = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isClothNNS") ?? isClothNNS.ToString ());
 			copyTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/copyTransform") ?? copyTransform.ToString ());
 		}
@@ -178,9 +180,22 @@
 					if (!isObjectCopy) {
 						continue;
 					}
-					GameObject childObject = (GameObject) Object.Instantiate (treeChild.gameObject, go.transform);
+					GameObject childObject;
+					if (isObjectCopySaveTransform) {
+						// Quaternionが難しいのでTransformで処理。rootのlocalPositionをコピー先でも維持する。
+						childObject = (GameObject) Object.Instantiate (treeChild.gameObject, root, true);
+						child = childObject.transform;
+						var localPosition = child.localPosition;
+						var localRotation = child.localRotation;
+						child.parent = activeObject.transform;
+						child.localPosition = localPosition;
+						child.localRotation = localRotation;
+						child.parent = go.transform;
+					} else {
+						childObject = (GameObject) Object.Instantiate (treeChild.gameObject, go.transform);
+						child = childObject.transform;
+					}
 					childObject.name = treeChild.name;
-					child = childObject.transform;
 
 					// コピーしたオブジェクトに対しては自動的に同種コンポーネントの削除を行う
 					RemoveWalkdown(childObject, ref next);
@@ -406,6 +421,10 @@
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isObjectCopy",
 				(isObjectCopy = GUILayout.Toggle (isObjectCopy, "コピー先にオブジェクトがなかったらオブジェクトをコピー")).ToString ()
+			);
+			EditorUserSettings.SetConfigValue (
+				"CopyComponentsByRegex/isObjectCopySaveTransform",
+				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にrootからの相対位置を保持")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isClothNNS",

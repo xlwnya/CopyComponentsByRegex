@@ -1,4 +1,4 @@
-namespace CopyComponentsByRegex {
+﻿namespace CopyComponentsByRegex {
 	using System.Collections.Generic;
 	using System.Collections;
 	using System.Linq;
@@ -174,12 +174,12 @@ namespace CopyComponentsByRegex {
 						}
 					}
 				}
-				}
+			}
 			
 			foreach (Component c in go.GetComponents<Component>()) {
 				components.Add(c);
 			}
-
+			
 			// children
 			var children = GetChildren (go);
 			var childDic = new Dictionary<string, Transform> ();
@@ -212,7 +212,7 @@ namespace CopyComponentsByRegex {
 
 					// コピーしたオブジェクトに対しては自動的に同種コンポーネントの削除を行う
 					if (isRemoveBeforeCopy) {
-					RemoveWalkdown(childObject, ref next);
+						RemoveWalkdown(childObject, ref next);
 					}
 				} else {
 					child = childDic[treeChild.name];
@@ -286,6 +286,22 @@ namespace CopyComponentsByRegex {
 					continue;
 				}
 
+				// SkinnedMeshRenderer.bonesがなぜか下のSerializedObject経由での処理で更新されないので直接参照を更新する。
+				if (dstComponent is SkinnedMeshRenderer) {
+					SkinnedMeshRenderer dstRenderer = dstComponent as SkinnedMeshRenderer;
+					var bones = dstRenderer.bones;
+					for(int i = 0; i < bones.Length; i++) {
+						Transform srcTransform = bones[i];
+
+						Transform dstTransform = SearchDstTransform(dstRoot, srcTransform);
+						if (dstTransform is null) continue;
+
+						bones[i] = dstTransform;
+					}
+
+					dstRenderer.bones = bones;
+				}
+
 				var so = new SerializedObject (dstComponent);
 				so.Update ();
 				var iter = so.GetIterator ();
@@ -311,49 +327,15 @@ namespace CopyComponentsByRegex {
 					} else if (dstObjectReference is Transform) {
 						srcTransform = dstObjectReference as Transform;
 					}
-
-					// ObjectReferenceの参照先がコピー内に存在するか
-					if (!transforms.Contains (srcTransform)) {
-						continue;
-					}
-
-					// コピー元のルートからObjectReferenceの位置への経路を探り、コピー後のツリーから該当オブジェクトを探す
-					var routes = SearchRoute (root, srcTransform);
-					if (routes == null) {
-						continue;
-					}
-					Transform current = dstRoot;
-					foreach (var route in routes) {
-						// 次の子を探す(TreeItemの名前と型で経路と同じ子を探す)
-						var children = GetChildren (current.gameObject);
-						if (children.Length < 1) {
-							current = null;
-							break;
-						}
-						Transform next = null;
-						foreach (Transform child in children) {
-							var treeitem = new TreeItem (child.gameObject);
-							if (treeitem.name == route.name && treeitem.type == route.type) {
-								next = child;
-								break;
-							}
-						}
-						if (next == null) {
-							current = null;
-							break;
-						}
-
-						current = next;
-					}
-					if (current == null) {
-						continue;
-					}
+					
+					Transform dstTransform = SearchDstTransform(dstRoot, srcTransform);
+					if (dstTransform is null) continue;
 
 					if (dstObjectReference is Transform) {
-						property.objectReferenceValue = current;
+						property.objectReferenceValue = dstTransform;
 					} else if (dstObjectReference is Component) {
 						Component comp = (Component)dstObjectReference;
-						var children = current.GetComponents(dstObjectReference.GetType());
+						var children = dstTransform.GetComponents(dstObjectReference.GetType());
 						var index = GetReferenceIndex(ref srcTransform, ref comp);
 
 						if (!SearchObjectReference(ref copyTree, ref comp)) {
@@ -369,6 +351,49 @@ namespace CopyComponentsByRegex {
 				so.ApplyModifiedProperties ();
 			}
 		}
+
+		static private Transform SearchDstTransform(Transform dstRoot, Transform srcTransform)
+		{
+			// ObjectReferenceの参照先がコピー内に存在するか
+			if (!transforms.Contains(srcTransform)) {
+				return null;
+			}
+
+			// コピー元のルートからObjectReferenceの位置への経路を探り、コピー後のツリーから該当オブジェクトを探す
+			var routes = SearchRoute(root, srcTransform);
+			if (routes == null) {
+				return null;
+			}
+
+			Transform current = dstRoot;
+			foreach (var route in routes) {
+				// 次の子を探す(TreeItemの名前と型で経路と同じ子を探す)
+				var children = GetChildren(current.gameObject);
+				if (children.Length < 1) {
+					current = null;
+					break;
+				}
+
+				Transform next = null;
+				foreach (Transform child in children) {
+					var treeitem = new TreeItem(child.gameObject);
+					if (treeitem.name == route.name && treeitem.type == route.type) {
+						next = child;
+						break;
+					}
+				}
+
+				if (next == null) {
+					current = null;
+					break;
+				}
+
+				current = next;
+			}
+
+			return current;
+		}
+
 		static private int GetReferenceIndex(ref Transform current, ref Component component) {
 			var children = current.GetComponents(component.GetType());
 			int i = children.Length;

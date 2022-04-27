@@ -220,7 +220,7 @@
 					childObject.name = treeChild.name;
 
 					// コピーしたオブジェクトに対しては自動的に同種コンポーネントの削除を行う
-					if (isRemoveBeforeCopy) {
+					if (isRemoveBeforeCopy || !pasteValuesIfExists) {
 						RemoveWalkdown(childObject, ref next);
 					}
 				} else {

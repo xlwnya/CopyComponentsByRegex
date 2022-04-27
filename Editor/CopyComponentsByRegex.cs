@@ -1,4 +1,4 @@
-namespace CopyComponentsByRegex {
+﻿namespace CopyComponentsByRegex {
 	using System.Collections.Generic;
 	using System.Collections;
 	using System.Linq;
@@ -34,6 +34,7 @@ namespace CopyComponentsByRegex {
 		static bool isObjectCopySaveTransform = false;
 		static bool isClothNNS = false;
 		static bool copyTransform = false;
+		static bool pasteValuesIfExists = false;
 
 		void OnEnable () {
 			pattern = EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pattern") ?? "";
@@ -42,6 +43,7 @@ namespace CopyComponentsByRegex {
 			isObjectCopySaveTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopySaveTransform") ?? isObjectCopySaveTransform.ToString ());
 			isClothNNS = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isClothNNS") ?? isClothNNS.ToString ());
 			copyTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/copyTransform") ?? copyTransform.ToString ());
+			pasteValuesIfExists = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pasteValuesIfExists") ?? pasteValuesIfExists.ToString ());
 		}
 
 		void OnSelectionChange () {
@@ -151,26 +153,33 @@ namespace CopyComponentsByRegex {
 						UnityEditorInternal.ComponentUtility.PasteComponentValues (dstComponent);
 					}
 				} else {
-					// https://gist.github.com/tsubaki/d049957ad312e3a12764
-					// 同じコンポーネントが複数ある場合、上から並んでいる順番にコピーする(一部削除されている場合はズレる)
-					var componentCount = targetComponents.Count (c => c.GetType () == component.GetType ());
-					if (componentCount == 0) {
-						UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
-					} else if (componentCount == 1) {
-						var targetComponent = targetComponents.First (c => c.GetType () == component.GetType ());
-						UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
+					if (!pasteValuesIfExists) {
+						UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
 					} else {
-						if (currentComponentCount.ContainsKey (component.GetType ()) == false) {
-							currentComponentCount.Add (component.GetType (), 0);
-						}
-						var count = currentComponentCount [component.GetType ()];
-						var targetComponentsWithType = targetComponents.Where (c => c.GetType () == component.GetType ());
-						if (count < targetComponentsWithType.Count ()) {
-							var targetComponent = targetComponents.Where (c => c.GetType () == component.GetType ()).ElementAt (count);
-							currentComponentCount [component.GetType ()] += 1;
+						// https://gist.github.com/tsubaki/d049957ad312e3a12764
+						// 同じコンポーネントが複数ある場合、上から並んでいる順番にコピーする(一部削除されている場合はズレる)
+						var componentCount = targetComponents.Count (c => c.GetType () == component.GetType ());
+						if (componentCount == 0) {
+							UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
+						} else if (componentCount == 1) {
+							var targetComponent = targetComponents.First (c => c.GetType () == component.GetType ());
 							UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
 						} else {
-							UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
+							if (currentComponentCount.ContainsKey(component.GetType()) == false) {
+								currentComponentCount.Add(component.GetType(), 0);
+							}
+
+							var count = currentComponentCount[component.GetType()];
+							var targetComponentsWithType =
+								targetComponents.Where(c => c.GetType() == component.GetType());
+							if (count < targetComponentsWithType.Count()) {
+								var targetComponent = targetComponents.Where(c => c.GetType() == component.GetType())
+									.ElementAt(count);
+								currentComponentCount[component.GetType()] += 1;
+								UnityEditorInternal.ComponentUtility.PasteComponentValues(targetComponent);
+							} else {
+								UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
+							}
 						}
 					}
 				}
@@ -457,6 +466,10 @@ namespace CopyComponentsByRegex {
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isRemoveBeforeCopy",
 				(isRemoveBeforeCopy = GUILayout.Toggle (isRemoveBeforeCopy, "コピー先に同じコンポーネントがあったら削除")).ToString ()
+			);
+			EditorUserSettings.SetConfigValue (
+				"CopyComponentsByRegex/pasteValuesIfExists",
+				(pasteValuesIfExists = GUILayout.Toggle (pasteValuesIfExists, "コピー先に同じコンポーネントがあったら値をペースト(複数ある場合は並び順依存)")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isObjectCopy",

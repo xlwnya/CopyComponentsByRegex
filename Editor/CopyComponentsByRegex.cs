@@ -1,4 +1,4 @@
-﻿namespace CopyComponentsByRegex {
+namespace CopyComponentsByRegex {
 	using System.Collections.Generic;
 	using System.Collections;
 	using System.Linq;
@@ -464,7 +464,7 @@
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isObjectCopySaveTransform",
-				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にrootからの相対位置を保持")).ToString ()
+				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にコピー元のルートからの相対位置を保持")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isClothNNS",

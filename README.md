@@ -6,7 +6,7 @@
 
 ## インストール
 
-[このリポジトリのzipファイル](https://github.com/Taremin/CopyComponentsByRegex/archive/master.zip)をダウンロードして、解凍したものをアセット内にコピーします。
+[このリポジトリのzipファイル](../../archive/refs/heads/master.zip)をダウンロードして、解凍したものをアセット内にコピーします。
 
 ### インストール時の注意
 
@@ -61,3 +61,4 @@ https://taremin.kibe.la/shared/entries/95c1d6cf-9fcd-4a57-8849-677529e50e77 に�
 `CopyComponentsByRegex` では以下のコードを改変して利用しています。
 
 - KDTree.cs - A Stark, September 2009. https://forum.unity.com/threads/point-nearest-neighbour-search-class.29923/
+- CopyPasteComponent.cs - tsubaki, November 2015. https://gist.github.com/tsubaki/d049957ad312e3a12764

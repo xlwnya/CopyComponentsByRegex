@@ -31,15 +31,19 @@
 		static List<Component> components = null;
 		static bool isRemoveBeforeCopy = false;
 		static bool isObjectCopy = false;
+		static bool isObjectCopySaveTransform = false;
 		static bool isClothNNS = false;
 		static bool copyTransform = false;
+		static bool pasteValuesIfExists = false;
 
 		void OnEnable () {
 			pattern = EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pattern") ?? "";
 			isRemoveBeforeCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isRemoveBeforeCopy") ?? isRemoveBeforeCopy.ToString ());
 			isObjectCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopy") ?? isObjectCopy.ToString ());
+			isObjectCopySaveTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopySaveTransform") ?? isObjectCopySaveTransform.ToString ());
 			isClothNNS = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isClothNNS") ?? isClothNNS.ToString ());
 			copyTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/copyTransform") ?? copyTransform.ToString ());
+			pasteValuesIfExists = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pasteValuesIfExists") ?? pasteValuesIfExists.ToString ());
 		}
 
 		void OnSelectionChange () {
@@ -100,37 +104,18 @@
 				return;
 			}
 
+			var targetComponents = go.GetComponents<Component> ();
+			Dictionary<System.Type, int> currentComponentCount = new Dictionary<System.Type, int> ();
+			
 			// copy components
 			foreach (Component component in tree.components) {
 				UnityEditorInternal.ComponentUtility.CopyComponent (component);
-				// 同じ種類のコンポーネントがある場合、既存のコンポーネントに上書きすることも出来る。
-				// しかし、一つのオブジェクトに複数のコンポーネントを設定したい場合もあるのでとりあえずコメントアウトしておく。
-				// 要望などがあれば切り替えても良いかもしれない。
-				/*
-				var targetComponent = go.GetComponent(type);
-				if (targetComponent) {
-					UnityEditorInternal.ComponentUtility.PasteComponentValues(targetComponent);
-				} else {
-					UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
-				}
-				*/
-				var targetComponent = go.GetComponent(component.GetType());
+
 				if (component is Cloth) {
 					var cloth = go.GetComponent<Cloth> () == null ? go.AddComponent<Cloth> () : go.GetComponent<Cloth> ();
 					CopyProperties (component, cloth);
-				} else if (component is Transform) {
-					if (copyTransform) {
-						UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
-					}
-				} else {
-					UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
-				}
 
-				Component[] comps = go.GetComponents<Component> ();
-				var dstComponent = comps[comps.Length - 1];
-				components.Add (dstComponent);
-
-				if (component is Cloth) {
+					Component dstComponent = cloth;
 					var srcCloth = (component as Cloth);
 					var dstCloth = (dstComponent as Cloth);
 					var srcCoefficients = srcCloth.coefficients;
@@ -162,9 +147,48 @@
 							dstCloth.coefficients = dstCoefficients;
 						}
 					}
+				} else if (component is Transform) {
+					Component dstComponent = go.GetComponent<Transform>();
+					if (copyTransform) {
+						UnityEditorInternal.ComponentUtility.PasteComponentValues (dstComponent);
+					}
+				} else {
+					if (!pasteValuesIfExists) {
+						UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
+					} else {
+						// https://gist.github.com/tsubaki/d049957ad312e3a12764
+						// 同じコンポーネントが複数ある場合、上から並んでいる順番にコピーする(一部削除されている場合はズレる)
+						var componentCount = targetComponents.Count (c => c.GetType () == component.GetType ());
+						if (componentCount == 0) {
+							UnityEditorInternal.ComponentUtility.PasteComponentAsNew (go);
+						} else if (componentCount == 1) {
+							var targetComponent = targetComponents.First (c => c.GetType () == component.GetType ());
+							UnityEditorInternal.ComponentUtility.PasteComponentValues (targetComponent);
+						} else {
+							if (currentComponentCount.ContainsKey(component.GetType()) == false) {
+								currentComponentCount.Add(component.GetType(), 0);
+							}
+
+							var count = currentComponentCount[component.GetType()];
+							var targetComponentsWithType =
+								targetComponents.Where(c => c.GetType() == component.GetType());
+							if (count < targetComponentsWithType.Count()) {
+								var targetComponent = targetComponents.Where(c => c.GetType() == component.GetType())
+									.ElementAt(count);
+								currentComponentCount[component.GetType()] += 1;
+								UnityEditorInternal.ComponentUtility.PasteComponentValues(targetComponent);
+							} else {
+								UnityEditorInternal.ComponentUtility.PasteComponentAsNew(go);
+							}
+						}
+					}
 				}
 			}
-
+			
+			foreach (Component c in go.GetComponents<Component>()) {
+				components.Add(c);
+			}
+			
 			// children
 			var children = GetChildren (go);
 			var childDic = new Dictionary<string, Transform> ();
@@ -178,12 +202,27 @@
 					if (!isObjectCopy) {
 						continue;
 					}
-					GameObject childObject = (GameObject) Object.Instantiate (treeChild.gameObject, go.transform);
+					GameObject childObject;
+					if (isObjectCopySaveTransform) {
+						// Quaternionが難しいのでTransformで処理。rootのlocalPositionをコピー先でも維持する。
+						childObject = (GameObject) Object.Instantiate (treeChild.gameObject, root, true);
+						child = childObject.transform;
+						var localPosition = child.localPosition;
+						var localRotation = child.localRotation;
+						child.parent = activeObject.transform;
+						child.localPosition = localPosition;
+						child.localRotation = localRotation;
+						child.parent = go.transform;
+					} else {
+						childObject = (GameObject) Object.Instantiate (treeChild.gameObject, go.transform);
+						child = childObject.transform;
+					}
 					childObject.name = treeChild.name;
-					child = childObject.transform;
 
 					// コピーしたオブジェクトに対しては自動的に同種コンポーネントの削除を行う
-					RemoveWalkdown(childObject, ref next);
+					if (isRemoveBeforeCopy || !pasteValuesIfExists) {
+						RemoveWalkdown(childObject, ref next);
+					}
 				} else {
 					child = childDic[treeChild.name];
 				}
@@ -203,7 +242,7 @@
 
 			// remove components
 			foreach (Component component in go.GetComponents<Component> ()) {
-				if (component != null && componentsTypes.Contains (component.GetType ())) {
+				if (component != null && !(component is Transform) && componentsTypes.Contains (component.GetType ())) {
 					Object.DestroyImmediate (component);
 				}
 			}
@@ -256,6 +295,22 @@
 					continue;
 				}
 
+				// SkinnedMeshRenderer.bonesがなぜか下のSerializedObject経由での処理で更新されないので直接参照を更新する。
+				if (dstComponent is SkinnedMeshRenderer) {
+					SkinnedMeshRenderer dstRenderer = dstComponent as SkinnedMeshRenderer;
+					var bones = dstRenderer.bones;
+					for(int i = 0; i < bones.Length; i++) {
+						Transform srcTransform = bones[i];
+
+						Transform dstTransform = SearchDstTransform(dstRoot, srcTransform);
+						if (dstTransform is null) continue;
+
+						bones[i] = dstTransform;
+					}
+
+					dstRenderer.bones = bones;
+				}
+
 				var so = new SerializedObject (dstComponent);
 				so.Update ();
 				var iter = so.GetIterator ();
@@ -281,49 +336,15 @@
 					} else if (dstObjectReference is Transform) {
 						srcTransform = dstObjectReference as Transform;
 					}
-
-					// ObjectReferenceの参照先がコピー内に存在するか
-					if (!transforms.Contains (srcTransform)) {
-						continue;
-					}
-
-					// コピー元のルートからObjectReferenceの位置への経路を探り、コピー後のツリーから該当オブジェクトを探す
-					var routes = SearchRoute (root, srcTransform);
-					if (routes == null) {
-						continue;
-					}
-					Transform current = dstRoot;
-					foreach (var route in routes) {
-						// 次の子を探す(TreeItemの名前と型で経路と同じ子を探す)
-						var children = GetChildren (current.gameObject);
-						if (children.Length < 1) {
-							current = null;
-							break;
-						}
-						Transform next = null;
-						foreach (Transform child in children) {
-							var treeitem = new TreeItem (child.gameObject);
-							if (treeitem.name == route.name && treeitem.type == route.type) {
-								next = child;
-								break;
-							}
-						}
-						if (next == null) {
-							current = null;
-							break;
-						}
-
-						current = next;
-					}
-					if (current == null) {
-						continue;
-					}
+					
+					Transform dstTransform = SearchDstTransform(dstRoot, srcTransform);
+					if (dstTransform is null) continue;
 
 					if (dstObjectReference is Transform) {
-						property.objectReferenceValue = current;
+						property.objectReferenceValue = dstTransform;
 					} else if (dstObjectReference is Component) {
 						Component comp = (Component)dstObjectReference;
-						var children = current.GetComponents(dstObjectReference.GetType());
+						var children = dstTransform.GetComponents(dstObjectReference.GetType());
 						var index = GetReferenceIndex(ref srcTransform, ref comp);
 
 						if (!SearchObjectReference(ref copyTree, ref comp)) {
@@ -339,6 +360,49 @@
 				so.ApplyModifiedProperties ();
 			}
 		}
+
+		static private Transform SearchDstTransform(Transform dstRoot, Transform srcTransform)
+		{
+			// ObjectReferenceの参照先がコピー内に存在するか
+			if (!transforms.Contains(srcTransform)) {
+				return null;
+			}
+
+			// コピー元のルートからObjectReferenceの位置への経路を探り、コピー後のツリーから該当オブジェクトを探す
+			var routes = SearchRoute(root, srcTransform);
+			if (routes == null) {
+				return null;
+			}
+
+			Transform current = dstRoot;
+			foreach (var route in routes) {
+				// 次の子を探す(TreeItemの名前と型で経路と同じ子を探す)
+				var children = GetChildren(current.gameObject);
+				if (children.Length < 1) {
+					current = null;
+					break;
+				}
+
+				Transform next = null;
+				foreach (Transform child in children) {
+					var treeitem = new TreeItem(child.gameObject);
+					if (treeitem.name == route.name && treeitem.type == route.type) {
+						next = child;
+						break;
+					}
+				}
+
+				if (next == null) {
+					current = null;
+					break;
+				}
+
+				current = next;
+			}
+
+			return current;
+		}
+
 		static private int GetReferenceIndex(ref Transform current, ref Component component) {
 			var children = current.GetComponents(component.GetType());
 			int i = children.Length;
@@ -404,8 +468,16 @@
 				(isRemoveBeforeCopy = GUILayout.Toggle (isRemoveBeforeCopy, "コピー先に同じコンポーネントがあったら削除")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
+				"CopyComponentsByRegex/pasteValuesIfExists",
+				(pasteValuesIfExists = GUILayout.Toggle (pasteValuesIfExists, "コピー先に同じコンポーネントがあったら値をペースト(複数ある場合は並び順依存)")).ToString ()
+			);
+			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isObjectCopy",
 				(isObjectCopy = GUILayout.Toggle (isObjectCopy, "コピー先にオブジェクトがなかったらオブジェクトをコピー")).ToString ()
+			);
+			EditorUserSettings.SetConfigValue (
+				"CopyComponentsByRegex/isObjectCopySaveTransform",
+				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にコピー元のルートからの相対位置を保持")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isClothNNS",

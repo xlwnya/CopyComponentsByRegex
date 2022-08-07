@@ -6,7 +6,7 @@
 
 ## インストール
 
-[このリポジトリのzipファイル](https://github.com/Taremin/CopyComponentsByRegex/archive/master.zip)をダウンロードして、解凍したものをアセット内にコピーします。
+[このリポジトリのzipファイル](../../archive/refs/heads/master.zip)をダウンロードして、解凍したものをアセット内にコピーします。
 
 ### インストール時の注意
 

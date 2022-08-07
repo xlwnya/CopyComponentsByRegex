@@ -32,6 +32,7 @@
 		static bool isRemoveBeforeCopy = false;
 		static bool isObjectCopy = false;
 		static bool isObjectCopySaveTransform = false;
+		static bool isObjectCopySaveWorldPosition = false;
 		static bool isClothNNS = false;
 		static bool copyTransform = false;
 		static bool pasteValuesIfExists = false;
@@ -41,6 +42,7 @@
 			isRemoveBeforeCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isRemoveBeforeCopy") ?? isRemoveBeforeCopy.ToString ());
 			isObjectCopy = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopy") ?? isObjectCopy.ToString ());
 			isObjectCopySaveTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopySaveTransform") ?? isObjectCopySaveTransform.ToString ());
+			isObjectCopySaveWorldPosition = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isObjectCopySaveWorldPosition") ?? isObjectCopySaveWorldPosition.ToString ());
 			isClothNNS = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/isClothNNS") ?? isClothNNS.ToString ());
 			copyTransform = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/copyTransform") ?? copyTransform.ToString ());
 			pasteValuesIfExists = bool.Parse (EditorUserSettings.GetConfigValue ("CopyComponentsByRegex/pasteValuesIfExists") ?? pasteValuesIfExists.ToString ());
@@ -203,7 +205,10 @@
 						continue;
 					}
 					GameObject childObject;
-					if (isObjectCopySaveTransform) {
+					if (isObjectCopySaveWorldPosition) {
+						childObject = (GameObject)Object.Instantiate(treeChild.gameObject, go.transform, true);
+						child = childObject.transform;
+					} else if (isObjectCopySaveTransform) {
 						// Quaternionが難しいのでTransformで処理。rootのlocalPositionをコピー先でも維持する。
 						childObject = (GameObject) Object.Instantiate (treeChild.gameObject, root, true);
 						child = childObject.transform;
@@ -477,7 +482,11 @@
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isObjectCopySaveTransform",
-				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にコピー元のルートからの相対位置を保持")).ToString ()
+				(isObjectCopySaveTransform = GUILayout.Toggle (isObjectCopySaveTransform, "オブジェクトのコピー時にコピー元のルートからの相対位置を維持")).ToString ()
+			);
+			EditorUserSettings.SetConfigValue (
+				"CopyComponentsByRegex/isObjectCopySaveWorldPosition",
+				(isObjectCopySaveWorldPosition = GUILayout.Toggle (isObjectCopySaveWorldPosition, "オブジェクトのコピー時にワールド座標を維持(↑より優先)")).ToString ()
 			);
 			EditorUserSettings.SetConfigValue (
 				"CopyComponentsByRegex/isClothNNS",
